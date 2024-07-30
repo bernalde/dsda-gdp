@@ -1,3 +1,10 @@
+"""
+main_small_batch.py
+This file contains the main function to solve the small batch problem with different approaches.
+
+References:
+    - Kocis, G. R.; Grossmann, I. E. Global Optimization of Nonconvex Mixed-Integer Nonlinear Programming (MINLP) Problems in Process Synthesis. Ind. Eng. Chem. Res. 1988, 27 (8), 1407–1421. 
+"""
 import csv
 import logging
 import os
@@ -8,17 +15,31 @@ import pyomo.environ as pe
 from pyomo.gdp import Disjunct, Disjunction
 from pyomo.util.infeasible import log_infeasible_constraints
 
-from gdp.dsda.dsda_functions import (external_ref, generate_initialization,
-                                     get_external_information,
-                                     initialize_model,
-                                     solve_complete_external_enumeration,
-                                     solve_subproblem, solve_with_dsda,
-                                     solve_with_gdpopt, solve_with_minlp,
-                                     visualize_dsda)
+from gdp.dsda.dsda_functions import (
+    external_ref,
+    generate_initialization,
+    get_external_information,
+    initialize_model,
+    solve_complete_external_enumeration,
+    solve_subproblem,
+    solve_with_dsda,
+    solve_with_gdpopt,
+    solve_with_minlp,
+    visualize_dsda,
+)
 from gdp.small_batch.gdp_small_batch import build_small_batch
 
 
 def problem_logic_batch(m):
+    """
+    This function returns the logic expressions to be used in the disjunctive constraints of the D-SDA approach for the small batch problem.
+
+    Args:
+        m (pyomo.ConcreteModel): Pyomo model of the small batch problem
+
+    Return:
+        logic_expr (list): List of logic expressions to be used in the disjunctive constraints
+    """
     logic_expr = []
     for k in m.k:
         for j in m.j:
@@ -37,14 +58,20 @@ if __name__ == "__main__":
     # Setting logging level to ERROR to avoid printing FBBT warning of some constraints not implemented
     logging.basicConfig(level=logging.ERROR)
 
-    csv_columns = ['Method', 'Approach', 'Solver',
-                   'Objective', 'Time', 'Status', 'User_time']
+    csv_columns = [
+        'Method',
+        'Approach',
+        'Solver',
+        'Objective',
+        'Time',
+        'Status',
+        'User_time',
+    ]
     dict_data = []
     dir_path = os.path.dirname(os.path.abspath(__file__))
-    csv_file = os.path.join(
-        dir_path, "results", "small_batch_results.csv")
+    csv_file = os.path.join(dir_path, "results", "small_batch_results.csv")
 
-    nlps = ['knitro', 'baron'] # msnlp
+    nlps = ['knitro', 'baron']  # 'msnlp']
 
     nlp_opts = dict((nlp, {}) for nlp in nlps)
     # nlp_opts['msnlp']['add_options'] = [
@@ -81,42 +108,59 @@ if __name__ == "__main__":
     ks = ['Infinity', '2']
     strategies = ['LOA', 'LBB']
 
-    # # Initializations
-    # json_file = os.path.join(
-    #     dir_path, "gdp/dsda/", "small_batch_initialization.json")
-    # if os.path.exists(json_file):
-    #     init_path = json_file
-    # else:
-    #     m = build_small_batch()
-    #     ext_ref = {m.Y: m.k}
-    #     reformulation_dict, number_of_external_variables, lower_bounds, upper_bounds = get_external_information(
-    #         m, ext_ref, tee=globaltee)
-    #     m_fixed = external_ref(m=m, x=starting_point, extra_logic_function=problem_logic_batch,
-    #                            dict_extvar=reformulation_dict, tee=globaltee)
-    #     m_solved = solve_subproblem(
-    #         m=m_fixed, subproblem_solver='baron', timelimit=100, tee=globaltee)
-    #     init_path = generate_initialization(
-    #         m=m_solved, starting_initialization=True, model_name='small_batch')
+    # Initializations
+    json_file = os.path.join(dir_path, "gdp/dsda/", "small_batch_initialization.json")
+    if os.path.exists(json_file):
+        init_path = json_file
+    else:
+        m = build_small_batch()
+        ext_ref = {m.Y: m.k}
+        (
+            reformulation_dict,
+            number_of_external_variables,
+            lower_bounds,
+            upper_bounds,
+        ) = get_external_information(m, ext_ref, tee=globaltee)
+        m_fixed = external_ref(
+            m=m,
+            x=starting_point,
+            extra_logic_function=problem_logic_batch,
+            dict_extvar=reformulation_dict,
+            tee=globaltee,
+        )
+        m_solved = solve_subproblem(
+            m=m_fixed, subproblem_solver='baron', timelimit=100, tee=globaltee
+        )
+        init_path = generate_initialization(
+            m=m_solved, starting_initialization=True, model_name='small_batch'
+        )
 
-    # # MINLP
-    # for solver in minlps:
-    #     for transformation in transformations:
-    #         new_result = {}
-    #         m = build_small_batch()
-    #         m_init = initialize_model(m, json_path=init_path)
-    #         m_solved = solve_with_minlp(
-    #             m_init,
-    #             transformation=transformation,
-    #             minlp=solver,
-    #             minlp_options=minlps_opts[solver],
-    #             timelimit=timelimit,
-    #             gams_output=False,
-    #             tee=globaltee,
-    #         )
-    #         new_result = {'Method': 'MINLP', 'Approach': transformation, 'Solver': solver, 'Objective': pe.value(
-    #             m_solved.obj), 'Time': m_solved.results.solver.user_time, 'Status': m_solved.results.solver.termination_condition, 'User_time': 'NA'}
-    #         dict_data.append(new_result)
-    #         print(new_result)
+    # MINLP
+    for solver in minlps:
+        for transformation in transformations:
+            new_result = {}
+            m = build_small_batch()
+            m_init = initialize_model(m, json_path=init_path)
+            m_solved = solve_with_minlp(
+                m_init,
+                transformation=transformation,
+                minlp=solver,
+                minlp_options=minlps_opts[solver],
+                timelimit=timelimit,
+                gams_output=False,
+                tee=globaltee,
+            )
+            new_result = {
+                'Method': 'MINLP',
+                'Approach': transformation,
+                'Solver': solver,
+                'Objective': pe.value(m_solved.obj),
+                'Time': m_solved.results.solver.user_time,
+                'Status': m_solved.results.solver.termination_condition,
+                'User_time': 'NA',
+            }
+            dict_data.append(new_result)
+            print(new_result)
 
     # # GDPopt
     # for solver in nlps:
@@ -133,8 +177,15 @@ if __name__ == "__main__":
     #             strategy=strategy,
     #             tee=globaltee,
     #         )
-    #         new_result = {'Method': 'GDPopt', 'Approach': strategy, 'Solver': solver, 'Objective': pe.value(
-    #             m_solved.obj), 'Time': m_solved.results.solver.user_time, 'Status': m_solved.results.solver.termination_condition, 'User_time': 'NA'}
+    #         new_result = {
+    #             'Method': 'GDPopt',
+    #             'Approach': strategy,
+    #             'Solver': solver,
+    #             'Objective': pe.value(m_solved.obj),
+    #             'Time': m_solved.results.solver.user_time,
+    #             'Status': m_solved.results.solver.termination_condition,
+    #             'User_time': 'NA',
+    #         }
     #         dict_data.append(new_result)
     #         print(new_result)
 
@@ -166,8 +217,15 @@ if __name__ == "__main__":
                     tee=globaltee,
                     global_tee=globaltee,
                 )
-                new_result = {'Method': str('D-SDA_MIP_'+transformation), 'Approach': str('k='+k), 'Solver': solver, 'Objective': pe.value(
-                    m_solved.obj), 'Time': m_solved.dsda_time, 'Status': m_solved.dsda_status, 'User_time': m_solved.dsda_usertime}
+                new_result = {
+                    'Method': str('D-SDA_MIP_' + transformation),
+                    'Approach': str('k=' + k),
+                    'Solver': solver,
+                    'Objective': pe.value(m_solved.obj),
+                    'Time': m_solved.dsda_time,
+                    'Status': m_solved.dsda_status,
+                    'User_time': m_solved.dsda_usertime,
+                }
                 dict_data.append(new_result)
                 print(new_result)
 
