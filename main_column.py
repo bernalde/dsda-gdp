@@ -45,14 +45,12 @@ References:
 from __future__ import division
 
 # Import various modules and functions needed for the script
-import csv  # To handle CSV files
-import logging  # To keep logs for tracking
-import os  # To access the OS functionalities for file and directory handling
-from math import ceil, fabs  # Importing ceil and fabs functions from math
+import csv
+import logging
+import os
+from math import ceil, fabs
 
-import pyomo.environ as pe  # To create and solve optimization models
-
-# Importing specific classes and functions from pyomo.environ
+import pyomo.environ as pe
 from pyomo.environ import (
     Block,
     BooleanVar,
@@ -74,18 +72,10 @@ from pyomo.environ import (
     minimize,
     value,
 )
-
-# Importing Disjunct and Disjunction classes from pyomo.gdp for creating generalized disjunctive programming models
 from pyomo.gdp import Disjunct, Disjunction
-
-# Importing utility function to log infeasible constraints
 from pyomo.util.infeasible import log_infeasible_constraints
 
-# Importing build_column function from gdp.column.gdp_column
 from gdp.column.gdp_column import build_column
-
-# Importing various functions from gdp.dsda.dsda_functions module
-# These functions help in initializing models, solving subproblems, generating initializations, visualizing data etc.
 from gdp.dsda.dsda_functions import (
     external_ref,
     generate_initialization,
@@ -161,12 +151,11 @@ def problem_logic_column(m):
                 m.no_tray[n].indicator_var,
             ]
         )
-
-    # Return the list of logic expressions
     return logic_expr
 
 
 if __name__ == "__main__":
+    # Inputs
     # This part of the script initializes the variables that are going to be used throughout the script.
     # NT: Number of trays in the distillation column
     # timelimit: time limit for solving the optimization problem
@@ -178,8 +167,10 @@ if __name__ == "__main__":
     NT = 17
     timelimit = 900  # [s]
     model_args = {'min_trays': 8, 'max_trays': NT, 'xD': 0.95, 'xB': 0.95}
+    # Initializing at column with all trays, reboil in bottom tray and reflux in top-most tray
     starting_point = [NT - 2, 1]
     globaltee = True
+    # Setting logging level to ERROR to avoid printing FBBT warning of some constraints not implemented
     logging.basicConfig(level=logging.ERROR)
 
     # Here the script is setting up the CSV file where the results will be saved.
@@ -197,75 +188,46 @@ if __name__ == "__main__":
     dir_path = os.path.dirname(os.path.abspath(__file__))
     csv_file = os.path.join(dir_path, "results", "column_results.csv")
 
-    # List of solvers that are going to be used for non-linear programming problems
-    nlps = ['knitro', 'baron']
+    nlps = ['knitro', 'baron']  # msnlp
 
     # Dictionary containing options for the NLP solvers
     nlp_opts = dict((nlp, {}) for nlp in nlps)
+    # nlp_opts['msnlp']['add_options'] = [
+    #     'GAMS_MODEL.optfile = 1;'
+    #     '\n'
+    #     '$onecho > msnlp.opt \n'
+    #     'nlpsolver knitro \n'
+    #     '$offecho \n'
+    # ]
 
-    # A dictionary is created where the keys are the names of the Non-Linear Programming (NLP) solvers, and the values are empty dictionaries.
-    # These empty dictionaries can later be filled with specific options for each solver.
-    nlp_opts = dict((nlp, {}) for nlp in nlps)
-    if 'msnlp' in nlps:
-        nlp_opts['msnlp']['add_options'] = [
-            'GAMS_MODEL.optfile = 1;'
-            '\n'
-            '$onecho > msnlp.opt \n'
-            'nlpsolver knitro \n'
-            '$offecho \n'
-        ]
-
-    # List of solvers that are going to be used for mixed integer non-linear programming problems
-    minlps = ['antigone', 'baron', 'scip', 'dicopt', 'sbb', 'knitro']
-
-    # Dictionary containing options for the MINLP solvers
-    minlps_opts = dict((minlp, {}) for minlp in minlps)
-
-    # Adding solver specific options for DICOPT and SBB solvers
-    minlps_opts['dicopt']['add_options'] = [...]
-    minlps_opts['sbb']['add_options'] = [...]
-
-    # Defining possible transformations for the optimization problems
-    transformations = ['bigm', 'hull']
-
-    # A list of the Mixed Integer Non-Linear Programming (MINLP) solvers to be used is defined.
     minlps = ['antigone', 'baron', 'scip', 'dicopt', 'sbb', 'knitro']
 
     # A dictionary is created where the keys are the names of the MINLP solvers, and the values are empty dictionaries.
     # These empty dictionaries can later be filled with specific options for each solver.
     minlps_opts = dict((minlp, {}) for minlp in minlps)
+    minlps_opts['dicopt']['add_options'] = [
+        'GAMS_MODEL.optfile = 1;'
+        '\n'
+        '$onecho > dicopt.opt \n'
+        'stop 0 \n'
+        'relaxed 2 \n'
+        'maxcycles 10000 \n'
+        'nlpsolver knitro \n'
+        '$offecho \n'
+    ]
 
-    # Specific options are added for the 'dicopt' solver. These options are in GAMS syntax,
-    # which is a high-level modeling system for mathematical programming problems.
-    # For instance, 'relaxed 2' is an option for specifying the relaxation strategy for integer variables,
-    # 'maxcycles 10000' sets the maximum number of cycles to 10000,
-    # and 'nlpsolver knitro' specifies 'knitro' as the NLP solver.
-    if 'dicopt' in minlps:
-        minlps_opts['dicopt']['add_options'] = [
-            'GAMS_MODEL.optfile = 1;'
-            '\n'
-            '$onecho > dicopt.opt \n'
-            'stop 0 \n'
-            'relaxed 2 \n'
-            'maxcycles 10000 \n'
-            'nlpsolver knitro \n'
-            '$offecho \n'
-        ]
+    # NOTE DICOPT with Hull reformulation will fail in reporting the right results. See lst file (it tends to be the initialization point)
 
-    # NOTE: using DICOPT with the Hull reformulation might not return the correct results, as per the content of the .lst file. This is due to initialization.
+    # For the 'sbb' solver, options are added to specify 'knitro' as both the root solver and the subsolver.
+    minlps_opts['sbb']['add_options'] = [
+        'GAMS_MODEL.optfile = 1;'
+        '\n'
+        '$onecho > sbb.opt \n'
+        'rootsolver knitro \n'
+        'subsolver knitro \n'
+        '$offecho \n'
+    ]
 
-    if 'sbb' in minlps:
-        # For the 'sbb' solver, options are added to specify 'knitro' as both the root solver and the subsolver.
-        minlps_opts['sbb']['add_options'] = [
-            'GAMS_MODEL.optfile = 1;'
-            '\n'
-            '$onecho > sbb.opt \n'
-            'rootsolver knitro \n'
-            'subsolver knitro \n'
-            '$offecho \n'
-        ]
-
-    # Possible transformations for the optimization problems are defined.
     # 'bigm' and 'hull' are two common techniques used to transform a Generalized Disjunctive Programming (GDP) problem into a MINLP problem.
     # transformations = ['bigm', 'hull']
     transformations = []
@@ -285,8 +247,7 @@ if __name__ == "__main__":
 
     # Checks if the JSON file already exists.
     if os.path.exists(json_file):
-        # If the file exists, its path is stored in 'init_path', which will be used later to load the initialization values.
-        init_path = json_file
+        init_path = json_file  # If the file exists, its path is stored in 'init_path', which will be used later to load the initialization values.
     else:
         # If the file doesn't exist, a new model 'm' is built using the arguments stored in 'model_args'.
         m = build_column(**model_args)
@@ -313,10 +274,8 @@ if __name__ == "__main__":
             dict_extvar=reformulation_dict,
             tee=globaltee,
         )
-
-        # The fixed model 'm_fixed' is solved with a subproblem solver (in this case, 'baron').
         m_solved = solve_subproblem(
-            m=m_fixed, subproblem_solver='baron', timelimit=100, tee=globaltee  # [s]
+            m=m_fixed, subproblem_solver='baron', timelimit=100, tee=globaltee
         )
 
         # Initialization data is generated from the solved model and saved to a file.
@@ -380,14 +339,13 @@ if __name__ == "__main__":
             print(new_result)
 
     # D-SDA MINLP
-    # The model is built and external references are set.
+    # The model is solved using different combinations of solvers and 'k' values.
+    # The 'k' value is a parameter of the D-SDA method and the transformation refers to a reformulation strategy for the MINLP problem.
+    # The results are saved in a dictionary and appended to a list 'dict_data'
     m = build_column(**model_args)
     ext_ref = {m.YB: m.intTrays, m.YR: m.intTrays}
     get_external_information(m, ext_ref, tee=globaltee)
 
-    # The model is solved using different combinations of solvers, 'k' values, and transformations.
-    # The 'k' value is a parameter of the D-SDA method and the transformation refers to a reformulation strategy for the MINLP problem.
-    # The results are saved in a dictionary and appended to a list 'dict_data'.
     for solver in nlps:
         for k in ks:
             mip_transformation = True
@@ -472,9 +430,7 @@ if __name__ == "__main__":
     m = build_column(**model_args)
     ext_ref = {m.YB: m.intTrays, m.YR: m.intTrays}
     get_external_information(m, ext_ref, tee=False)
-
-    # The variable 'iterlim' is set to 3600, which could be used as an iteration limit in later computations.
-    iterlim = 3600
+    iterlim = 3600  # Iteration limit
 
     # points = [(13, 4)]
     # points = [(14, 7), (15, 7), (15, 8), (15, 9), (7, 1),
